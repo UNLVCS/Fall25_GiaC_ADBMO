@@ -1,4 +1,3 @@
-
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -17,68 +16,67 @@ options = Options()
 options.add_argument("--headless")
 driver = webdriver.Chrome(options=options)
 
-# Empty list to store extracted Alzheimer-related titles + links
 titles = []
 
-# Function to parse page
+# ---------- GENERIC PARSER ----------
 def parse_page(url, classname):
     driver.get(url)
-    time.sleep(2)
+    time.sleep(3)
 
-    # Keeps clicking until no more pages
+    folder = "alzheimers_html"
+    os.makedirs(folder, exist_ok=True)
+
     while True:
         try:
-            # Parse page
             soup = BeautifulSoup(driver.page_source, "html.parser")
+            for tag in soup(["header", "footer", "nav"]):
+                tag.decompose()
 
-            # Extract Alzheimer-related titles 
-            for heading in soup.find_all(["h1", "h2", "h3", "h4"]): # Different header tags depending on website
-                # Extracts the heading text, looks for a hyperlink inside, and pulls out its href (if it exists)
+            for heading in soup.find_all(["h1", "h2", "h3", "h4"]):
                 text = heading.get_text(strip=True)
                 link = heading.find("a")
                 href = link.get("href") if link else None
 
-                # Saves both title and link when alzheimer (case-sensitive) is present
                 if "alzheimer" in text.lower():
-                    # Gets title and will also get link if exist
-                    titles.append({"title": text, "link": href if href else url})
-                    # Prints text and link saved
-                    print("Saved:", text)
-                    if href:
-                        print("Link:", href)
+                    full_link = urljoin(url, href) if href else url
+                    if any(d.get("link") == full_link for d in titles):
+                        continue
 
-            # If a classname was given, it looks for the button by class name, if no class was provided, breaks out of the loop after the first page
-            if classname != "":
+                    titles.append({"title": text, "link": full_link})
+                    print("Saved:", text)
+
+                    # Save article HTML
+                    try:
+                        driver.get(full_link)
+                        time.sleep(2)
+                        safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", text[:60])
+                        html_path = os.path.join(folder, f"{safe_title}.html")
+                        with open(html_path, "w", encoding="utf-8") as f:
+                            f.write(driver.page_source)
+                    except Exception as e:
+                        print("Error saving article HTML:", e)
+
+                    driver.back()
+                    time.sleep(2)
+
+            if classname:
                 load_more = driver.find_element(By.CLASS_NAME, classname)
                 driver.execute_script("arguments[0].click();", load_more)
                 time.sleep(3)
-
-            else:        
+            else:
                 break
-            
-        # If anything fails, break the loop.
         except:
-            break 
+            break
 
-def contains_alzheimer(text):
-    return "alzheimer" in text.lower()
 
-# Function specific for IGCPharma
+# ---------- IGC PHARMA ----------
 def scrape_igcpharma():
     base_url = "https://igcpharma.com/category/news/"
-    driver.get(base_url)
-    time.sleep(2)
-
-    # Looks for folder IGCPharma
-    folder = "igcpharma_pdfs"
+    folder = "igcpharma_articles"
     os.makedirs(folder, exist_ok=True)
 
- # Saves the landing page HTML of IGCPharma
-    landing_html = os.path.join(folder, "IGCPharma_landing.html")
-    with open(landing_html, "w", encoding="utf-8") as f:
-        f.write(driver.page_source)
-    print(f"Saved landing page HTML: {landing_html}")
-
+    driver.get(base_url)
+    time.sleep(2)
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     for article in soup.select("article"):
@@ -90,60 +88,93 @@ def scrape_igcpharma():
         href = urljoin(base_url, link_tag["href"]) if link_tag else None
         date = date_tag.get_text(strip=True) if date_tag else None
 
-        # Processes only Alzheimer-related articles
-        if title and href and contains_alzheimer(title):
-            titles.append({
-                "title": title,
-                "link": href,
-                "date": date,
-                "author": "IGC Pharma"
-            })
-            print("Saved:", title)
-            print("Link:", href)
+        if not title or not href or "alzheimer" not in title.lower():
+            continue
 
-            driver.get(href)
-            time.sleep(2)
+        titles.append({"title": title, "link": href, "date": date, "author": "IGC Pharma"})
+        print("Saved:", title)
 
-            # Saves HTML of article
-            safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60]) 
-            html_filename = os.path.join(folder, f"IGCPharma_{safe_title}.html")
-            with open(html_filename, "w", encoding="utf-8") as f:
-                f.write(driver.page_source)
-           
-            # Saves PDF or article
-            pdf = driver.execute_cdp_cmd("Page.printToPDF", {"printBackground": True})
-            pdf_filename = os.path.join(folder, f"IGCPharma_{safe_title}.pdf")
-            with open(pdf_filename, "wb") as f:
-                f.write(base64.b64decode(pdf['data']))
+        driver.get(href)
+        time.sleep(2)
+        safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
+        html_path = os.path.join(folder, f"{safe_title}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
 
-# Function specific for AsceNeuron
+
+# ---------- EXTRACT METADATA ----------
+def igcpharma_metadata(folder="igcpharma_articles"):
+    metadata = []
+    
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        
+        with open(path, "r", encoding="utf-8") as f:
+            soup = BeautifulSoup(f.read(), "html.parser")
+
+        # Try to scope to article container first
+        article_container = soup.select_one("article, .elementor-post, .post")  # adjust if needed
+        if article_container:
+            # Title inside the article container
+            title_tag = article_container.select_one("h2, h3, .elementor-post-title, .entry-title")
+        else:
+            title_tag = soup.select_one("h2, h3, .elementor-post-title, .entry-title")
+
+        title = title_tag.get_text(strip=True) if title_tag else file.replace(".html", "")
+
+        # Date inside article container
+        if article_container:
+            date_tag = article_container.select_one(".elementor-post-date, time, .post-date")
+        else:
+            date_tag = soup.select_one(".elementor-post-date, time, .post-date")
+        date = date_tag.get_text(strip=True) if date_tag else None
+
+        # Author
+        author = None
+        meta_author = soup.find("meta", attrs={"name": "author"})
+        if meta_author and meta_author.get("content"):
+            author = meta_author["content"]
+        elif article_container and article_container.select_one(".author, .byline, .post-author, .entry-author"):
+            author = article_container.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
+        else:
+            author = "IGC Pharma"
+
+        # Content
+        content_container = article_container or soup
+        paragraphs = content_container.find_all("p")
+        content = "\n".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Append metadata
+        metadata.append({
+            "filename": file,
+            "title": title,
+            "date": date,
+            "author": author,
+            "content": content
+        })
+
+    return metadata
+
+
+# ---------- ASCENEURON ----------
 def scrape_asceneuron():
     base_url = "https://asceneuron.com/news-events/"
+    folder = "asceneuron_articles"
+    os.makedirs(folder, exist_ok=True)
+
     driver.get(base_url)
     time.sleep(2)
 
-    # Looks for folder AsceNeuron
-    folder = "asceneuron_pdfs"
-    os.makedirs(folder, exist_ok=True)
-
-    # Saves landing page HTML of AsceNeuron
-    landing_html = os.path.join(folder, "AsceNeuron_landing.html")
-    with open(landing_html, "w", encoding="utf-8") as f:
-        f.write(driver.page_source)
-    print(f"Saved landing page HTML: {landing_html}")
-
     seen_links = set()
-
-    # Clicks 'Load More' until all articles are loaded, before parsing
     while True:
         soup = BeautifulSoup(driver.page_source, "html.parser")
         articles = soup.select("div.df-item-wrap.df-cpt-title-wrap a")
         current_links = {urljoin(base_url, a.get("href")) for a in articles}
-
         new_links = current_links - seen_links
         if not new_links:
             break
-
         seen_links.update(new_links)
 
         try:
@@ -153,62 +184,117 @@ def scrape_asceneuron():
         except:
             break
 
-    # Processes all loaded articles
-    for article in soup.select("div.df-item-wrap.df-cpt-title-wrap a"):
-        title = article.get_text(strip=True)
-        href = urljoin(base_url, article.get("href"))
-
-        if "alzheimer" not in title.lower():
-            continue
-
-        # Avoid duplicates
-        if any(d.get("link") == href for d in titles):
-            continue
-
-       # Visit article to get date
+    for href in seen_links:
         driver.get(href)
         time.sleep(2)
         detail_soup = BeautifulSoup(driver.page_source, "html.parser")
 
-        # Extract date
-        date_tag = detail_soup.select_one("span.df-cpt-date-wrap")
+        title_tag = detail_soup.select_one("h1, .entry-title")
+        title = title_tag.get_text(strip=True) if title_tag else "Untitled"
+        if "alzheimer" not in title.lower():
+            continue
+
+        date_tag = detail_soup.select_one(".df-cpt-date-wrap, time, .elementor-post-date")
         date = date_tag.get_text(strip=True) if date_tag else None
 
-        # Save metadata
-        titles.append({
-            "title": title,
-            "link": href,
-            "date": date,
-            "author": "AsceNeuron"
-        })
-        print("Saved:", title)
-        print("Link:", href)
-        if date:
-            print("Date:", date)
+        author = None
+        meta_author = detail_soup.find("meta", attrs={"name": "author"})
+        if meta_author and meta_author.get("content"):
+            author = meta_author["content"]
+        elif detail_soup.select_one(".author, .byline, .post-author, .entry-author"):
+            author = detail_soup.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
+        else:
+            author = "AsceNeuron"
 
-        # Saves HTML or article
-        safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
-        html_filename = os.path.join(folder, f"AscenNeuron_{safe_title}.html")
-        with open(html_filename, "w", encoding="utf-8") as f:
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title[:60])
+        html_path = os.path.join(folder, f"AsceNeuron_{safe_title}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
             f.write(driver.page_source)
 
-        # Saves PDF of article
-        pdf = driver.execute_cdp_cmd("Page.printToPDF", {"printBackground": True})
-        pdf_filename = os.path.join(folder, f"AscenNeuron_{safe_title}.pdf")
-        with open(pdf_filename, "wb") as f:
-            f.write(base64.b64decode(pdf['data']))
+        titles.append({"title": title, "link": href, "date": date, "author": author})
+        print("Saved:", title)
 
-# Runs for 4 different sites
+
+def asceneuron_metadata(folder="asceneuron_articles"):
+    metadata = []
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        
+        path = os.path.join(folder, file)
+        with open(path, "r", encoding="utf-8") as f:
+            soup = BeautifulSoup(f.read(), "html.parser")
+
+        # --- Title ---
+        title_tag = soup.select_one("h1.df-cpt-title, h1, .entry-title")
+        title = title_tag.get_text(strip=True) if title_tag else file.replace(".html", "")
+
+        # --- Date ---
+        date_tag = soup.select_one(".df-cpt-date-wrap, time, .elementor-post-date, .post-date")
+        date = date_tag.get_text(strip=True) if date_tag else None
+
+        # --- Author ---
+        author = None
+        meta_author = soup.find("meta", attrs={"name": "author"})
+        if meta_author and meta_author.get("content"):
+            author = meta_author["content"]
+        elif soup.select_one(".author, .byline, .post-author, .entry-author"):
+            author = soup.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
+        else:
+            author = "AsceNeuron"
+
+        # --- Content / Body of the article ---
+        # This targets the main article content specifically
+        content_container = soup.select_one(".df-cpt-content, .elementor-widget-theme-post-content, .entry-content, article, .content")
+        if content_container:
+            paragraphs = content_container.find_all("p")
+        else:
+            paragraphs = soup.find_all("p")
+
+        # Join paragraph texts together as the "content"
+        content = "\n".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # --- Save Metadata ---
+        metadata.append({
+            "filename": file,
+            "title": title,
+            "date": date,
+            "author": author,
+            "content": content
+        })
+
+    return metadata
+
+
+# ---------- MAIN RUN ----------
 def main():
-    parse_page("https://www.alzinova.com/investors/press-releases/", "mfn-pagination-link.mfn-next")
-    parse_page("https://aprinoia.com/news/","")
-    scrape_igcpharma()
+    #parse_page("https://aprinoia.com/news/","")
+    #parse_page("https://agenebio.com/about-us/recent-news/","next.page-numbers")
+    #parse_page("https://biggsinstitute.org/category/news/", "next")
+    #parse_page("https://health.ucdavis.edu/alzheimers-research/news/topic/neurological-health", "")
+    #scrape_igcpharma()
     scrape_asceneuron()
-main() 
 
 
-# Saves to CSV
-df = pd.DataFrame(titles)
-df.to_csv("alzheimer_titles.csv", index=False)
+    # Save all titles
+    df_titles = pd.DataFrame(titles)
+    df_titles.to_csv("alzheimer_titles.csv", index=False)
+    print(f"Saved {len(df_titles)} Alzheimer titles")
 
-print(f"Saved {len(titles)} alzheimer_titles.csv")
+    # Extract and save IGC Pharma metadata
+    meta = igcpharma_metadata()
+    df = pd.DataFrame(meta)
+    df.to_csv("igcpharma_metadata.csv", index=False)
+    print("Saved metadata to igcpharma_metadata.csv")
+
+    # Extract and save AsceNeuron metadata
+    meta = asceneuron_metadata()
+    df_meta = pd.DataFrame(meta)
+    df_meta.to_csv("asceneuron_metadata.csv", index=False)
+    print("Saved asceneuron_metadata.csv")
+
+    driver.quit()
+
+
+# Run it all
+main()
