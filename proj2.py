@@ -268,11 +268,11 @@ def asceneuron_metadata(folder="asceneuron_articles"):
 
 # ---------- MAIN RUN ----------
 def main():
-    #parse_page("https://aprinoia.com/news/","")
-    #parse_page("https://agenebio.com/about-us/recent-news/","next.page-numbers")
-    #parse_page("https://biggsinstitute.org/category/news/", "next")
-    #parse_page("https://health.ucdavis.edu/alzheimers-research/news/topic/neurological-health", "")
-    #scrape_igcpharma()
+    parse_page("https://aprinoia.com/news/","")
+    parse_page("https://agenebio.com/about-us/recent-news/","next.page-numbers")
+    parse_page("https://biggsinstitute.org/category/news/", "next")
+    parse_page("https://health.ucdavis.edu/alzheimers-research/news/topic/neurological-health", "")
+    scrape_igcpharma()
     scrape_asceneuron()
 
 
