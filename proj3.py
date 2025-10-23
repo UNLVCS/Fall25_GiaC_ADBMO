@@ -553,9 +553,36 @@ def extract_agenebio_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
 
-    # Date
+# --- Date ---
+    date_text = None
+
+    # Common date tags
     date_tag = soup.select_one("time, .post-date, .entry-date, .elementor-post-date")
-    date = date_tag.get_text(strip=True) if date_tag else None
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+
+    # If still not found, look for month-year pattern anywhere
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    # Parsing the date
+    date = None
+    if date_text: 
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
+        try:
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
+        except Exception:
+            parsed_date = pd.to_datetime(cleaned, errors="coerce")
+
+        if parsed_date is not None and not pd.isna(parsed_date):
+            date = parsed_date.strftime("%Y-%m-%d")
 
     # Author
     author = None
