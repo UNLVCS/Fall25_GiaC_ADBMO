@@ -1,3 +1,8 @@
+import pandas as pd 
+import time 
+import re 
+import os
+import json 
 from selenium import webdriver  
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By 
@@ -5,11 +10,8 @@ from urllib.parse import urljoin
 from selenium.webdriver.support.ui import WebDriverWait 
 from selenium.webdriver.support import expected_conditions as EC  
 from bs4 import BeautifulSoup  
-import pandas as pd 
-import time 
-import re 
-import os
-import json 
+from dateutil import parser
+from dateutil import parser as dateparser
 
 # Makes Chrome run without showing visible browser window
 options = Options()
