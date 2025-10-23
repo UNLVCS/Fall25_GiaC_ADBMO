@@ -262,22 +262,63 @@ def extract_aprinoia_content(path):
     else:
         title = os.path.basename(path).replace(".html", "").replace("_", " ")
 
-    # Date
-    date = None
+   # --- Date ---
+    date_text = None
+
+    # Try typical date elements first
     date_tag = soup.select_one("time.entry-date, .post-date, .entry-date, .elementor-post-date")
     if date_tag:
         date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
-    else:
-        date_div = soup.select_one("div.ue-grid-item-meta-data")
-        date_text = date_div.get_text(strip=True) if date_div else None
 
+    # If not found, search <em>, <strong>, and <p> tags for month/year
+    if not date_text:
+        for tag in soup.find_all(["em", "strong", "p"]):
+            text = tag.get_text(" ", strip=True)
+            if re.search(
+                r"(January|February|March|April|May|June|July|August|September|October|November|December).*\d{4}",
+                text,
+            ):
+                date_text = text
+                break
+
+    # If still not found, search entire text for any date-like string
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    # Cleaning date text
+    date = None
     if date_text:
+        cleaned = (
+            date_text.replace("\u2013", "-") 
+                     .replace("–", "-")
+                     .replace("—", "-")
+                     .strip()
+        )
+
+        # Cleaning date
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", cleaned)
+
+        # Extract substring that looks like date
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+            cleaned,
+        )
+        if match:
+            cleaned = match.group(0)
+
         try:
-            from dateutil import parser as dateparser
-            parsed_date = dateparser.parse(date_text)
-            date = parsed_date.strftime("%Y-%m-%d")
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
         except Exception:
-            date = date_text
+            parsed_date = pd.to_datetime(cleaned, errors="coerce")
+
+        if parsed_date is not None and not pd.isna(parsed_date):
+            date = parsed_date.strftime("%Y-%m-%d")
 
     # Author
     author = "Aprinoia"
