@@ -58,28 +58,25 @@ def extract_igcpharma_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
 
-    # --- Title ---
+    # Title
     title_tag = soup.select_one("h1.entry-title, h1")
     title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
 
-    # --- Date Extraction ---
+    # Date
     date_tag = soup.select_one("time.entry-date, time, .elementor-post-date, .post-date")
     raw_date = date_tag.get_text(strip=True) if date_tag else None
 
     parsed_date = None
     if raw_date:
-        # Try parsing with dateutil first
         try:
             parsed_date = parser.parse(raw_date, fuzzy=True)
         except Exception:
-            # fallback: pandas (handles messy formats)
             parsed_date = pd.to_datetime(raw_date, errors='coerce')
 
-    # If both fail, parsed_date might be NaT — convert to None
     if pd.isna(parsed_date):
         parsed_date = None
 
-    # --- Author ---
+    # Author
     author = "IGC Pharma"
     meta_author = soup.find("meta", attrs={"name": "author"})
     if meta_author and meta_author.get("content"):
@@ -87,7 +84,7 @@ def extract_igcpharma_content(path):
     elif soup.select_one(".author, .byline, .post-author, .entry-author"):
         author = soup.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
 
-    # --- Content ---
+    # Content
     content_containers = soup.select(".entry-content, .elementor-widget-container, article, .post-content")
     paragraphs = []
     for container in content_containers:
@@ -253,7 +250,7 @@ def scrape_aprinoia():
         # Visit article and save HTML
         driver.get(full_link)
         time.sleep(2)
-        safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title)  # Clean title for filename
+        safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title)
         html_path = os.path.join(folder, f"Aprinoia_{safe_title}.html")
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(driver.page_source)
@@ -275,7 +272,7 @@ def extract_aprinoia_content(path):
     else:
         title = os.path.basename(path).replace(".html", "").replace("_", " ")
 
-    # --- Date ---
+    # Date
     date_text = None
 
     # Try typical date elements first
@@ -304,17 +301,15 @@ def extract_aprinoia_content(path):
         if match:
             date_text = match.group(0)
 
-    # --- Clean and parse date text ---
+    # Cleaning parsed dates
     date = None
     if date_text:
         cleaned = (
-            date_text.replace("\u2013", "-")   # normalize en dash
+            date_text.replace("\u2013", "-") 
                      .replace("–", "-")
                      .replace("—", "-")
                      .strip()
         )
-
-        # Remove anything before the date
         cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", cleaned)
 
         # Extract substring that looks like a month-day-year
@@ -566,7 +561,7 @@ def extract_agenebio_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
 
-    # --- Date ---
+    # Date
     date_text = None
 
     # Common date tags
@@ -588,7 +583,6 @@ def extract_agenebio_content(path):
     # Try parsing the date
     date = None
     if date_text:
-        # Clean unwanted prefixes 
         cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
         try:
             parsed_date = dateparser.parse(cleaned, fuzzy=True)
@@ -598,7 +592,7 @@ def extract_agenebio_content(path):
         if parsed_date is not None and not pd.isna(parsed_date):
             date = parsed_date.strftime("%Y-%m-%d")
 
-    # --- Author ---
+    # Author
     author = None
     meta_author = soup.find("meta", attrs={"name": "author"})
     if meta_author and meta_author.get("content"):
@@ -608,7 +602,7 @@ def extract_agenebio_content(path):
     else:
         author = "AGeneBio"
 
-    # --- Content ---
+    # Content
     content_containers = soup.select(".entry-content, .elementor-widget-container, article, .post-content")
     paragraphs = []
     for container in content_containers:
@@ -623,7 +617,6 @@ def extract_agenebio_content(path):
             if text:
                 paragraphs.append(text)
 
-    # --- Clean irrelevant text ---
     cleaned_paragraphs = []
     for p in paragraphs:
         lower_p = p.lower()
@@ -633,7 +626,7 @@ def extract_agenebio_content(path):
             "p:", "phone", "inc."
         ]):
             continue
-        if re.search(r"\d{3}[-.\s]\d{3}[-.\s]\d{4}", p):  # phone numbers
+        if re.search(r"\d{3}[-.\s]\d{3}[-.\s]\d{4}", p):
             continue
         cleaned_paragraphs.append(p)
 
