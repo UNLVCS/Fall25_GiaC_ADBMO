@@ -603,6 +603,15 @@ def extract_agenebio_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
 
+    # --- Title ---
+    title_tag = soup.select_one("h1.entry-title, h1.post-title, h1")
+    if not title_tag:
+        title_tag = soup.find("title")
+    if title_tag:
+        title = title_tag.get_text(strip=True)
+    else:
+        title = os.path.basename(path).replace(".html", "").replace("_", " ")
+
     # Date 
     date_text = None
 
