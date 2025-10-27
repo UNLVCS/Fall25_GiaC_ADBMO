@@ -249,11 +249,11 @@ def extract_asceneuron_content(path):
     summary = content[:500] if content else None
 
     return {
+        "filename": os.path.basename(path),       
         "title": title,
         "date": date,
         "author": author,
-        "summary": summary,
-        "file": os.path.basename(path),
+        "content": summary,
         "content_source": "html"
     }
 
@@ -397,11 +397,11 @@ def extract_aprinoia_content(path):
     summary = content[:500] if content else None
 
     return {
+        "file": os.path.basename(path),
         "title": title,
         "date": date,
         "author": author,
-        "summary": summary,
-        "file": os.path.basename(path),
+        "content": summary,
         "content_source": "html"
     }
 
@@ -504,11 +504,11 @@ def extract_ucdavis_content(path):
                     author = author_data[0].get("name")
                 description = data.get("description")
                 return {
+                    "filename": os.path.basename(path),
                     "title": headline,
                     "date": date,
                     "author": author,
-                    "summary": description,
-                    "file": os.path.basename(path),
+                    "content": description,
                     "content_source": "jsonld",
                 }
         except Exception:
@@ -531,11 +531,11 @@ def extract_ucdavis_content(path):
     summary = content[:500] if content else None
 
     return {
+        "filename": os.path.basename(path),
         "title": title,
         "date": date,
         "author": author,
-        "summary": summary,
-        "file": os.path.basename(path),
+        "content": summary,
         "content_source": "html",
     }
 
@@ -679,10 +679,11 @@ def extract_agenebio_content(path):
     summary = content[:500] if content else None
 
     return {
-        "title": os.path.basename(path),
+        "filename": os.path.basename(path),
+        "title": title,
         "date": date,
         "author": author,
-        "summary": summary,
+        "content": summary,
         "content_source": "html"
     }
 
