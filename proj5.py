@@ -701,10 +701,10 @@ def agenebio_metadata(folder="agenebio_articles"):
 def main():
     # Runs all scrapers
     scrape_igcpharma()
-    #scrape_asceneuron()
-    #scrape_aprinoia()
-    #scrape_ucdavis()
-    #scrape_agenebio()
+    scrape_asceneuron()
+    scrape_aprinoia()
+    scrape_ucdavis()
+    scrape_agenebio()
 
     # Extract metadata and save CSVs
     meta = igcpharma_metadata()
