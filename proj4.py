@@ -76,13 +76,32 @@ def extract_igcpharma_content(path):
     if pd.isna(parsed_date):
         parsed_date = None
 
-    # Author
-    author = "IGC Pharma"
-    meta_author = soup.find("meta", attrs={"name": "author"})
-    if meta_author and meta_author.get("content"):
-        author = meta_author["content"]
-    elif soup.select_one(".author, .byline, .post-author, .entry-author"):
-        author = soup.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
+    # --- Author ---
+        author = None
+        meta_author = soup.find("meta", attrs={"name": "author"})
+        if meta_author and meta_author.get("content"):
+            author = meta_author["content"]
+        elif article_container and article_container.select_one(".author, .byline, .post-author, .entry-author"):
+            author = article_container.select_one(
+                ".author, .byline, .post-author, .entry-author"
+            ).get_text(strip=True)
+        else:
+            # Search for known PR names in text (e.g., <span>Rosalyn Christian / John Nesbett</span>)
+            possible_author = None
+            for span in soup.find_all(["span", "p", "div"]):
+                text = span.get_text(strip=True)
+                lower = text.lower()
+
+                # Skip contact info or investor relations blocks
+                if any(x in lower for x in ["@", "phone", "p:", "investor", "relations", "igc@"]):
+                    continue
+
+                # Look for target PR names
+                if "rosalyn christian" in lower or "john nesbett" in lower:
+                    possible_author = text
+                    break
+
+            author = possible_author or "Rosalyn Christian / John Nesbett"
 
     # Content
     content_containers = soup.select(".entry-content, .elementor-widget-container, article, .post-content")
