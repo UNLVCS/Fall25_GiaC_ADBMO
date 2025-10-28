@@ -22,6 +22,7 @@ titles = []
 
 # ----- IGC PHARMA -----
 def scrape_igcpharma():
+    """Scrape all Alzheimer-related article HTMLs from IGC Pharma's news page."""
     base_url = "https://igcpharma.com/category/news/"
     folder = "igcpharma_articles"
     os.makedirs(folder, exist_ok=True)
@@ -33,93 +34,73 @@ def scrape_igcpharma():
     for article in soup.select("article"):
         heading = article.find(["h2", "h3"])
         link_tag = article.find("a", href=True)
-        date_tag = article.select_one(".elementor-post-date")
 
         title = heading.get_text(strip=True) if heading else None
         href = urljoin(base_url, link_tag["href"]) if link_tag else None
-        date = date_tag.get_text(strip=True) if date_tag else None
 
         if not title or not href or "alzheimer" not in title.lower():
             continue
 
-        titles.append({"title": title, "link": href, "date": date, "author": "IGC Pharma"})
-
         driver.get(href)
         time.sleep(2)
+
+        # Save HTML to folder
         safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
         html_path = os.path.join(folder, f"{safe_title}.html")
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(driver.page_source)
+
         print("Saved HTML:", title)
 
-def extract_igcpharma_content(path):
-    """Extract metadata and clean main content from IGC Pharma HTML files."""
-    from bs4 import BeautifulSoup
-    import os, re
 
+def extract_igcpharma_content(path):
+    """Extract title, date, author, and cleaned content from a saved IGC Pharma HTML file."""
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
 
-    metadata = {}
-
-    # Article Container
-    article_container = soup.select_one("article, .elementor-post, .post, .entry-content")
-    if article_container:
-        title_tag = article_container.select_one("h1, h2, h3, .elementor-post-title, .entry-title")
-    else:
-        title_tag = soup.select_one("h1, h2, h3, .elementor-post-title, .entry-title")
-
+    # Title 
+    title_tag = soup.select_one("h1, h2, h3, .elementor-post-title, .entry-title")
     title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
 
-    # Date
-    if article_container:
-        date_tag = article_container.select_one(".elementor-post-date, time, .post-date")
-    else:
-        date_tag = soup.select_one(".elementor-post-date, time, .post-date")
+    # Date 
+    date_tag = soup.select_one(".elementor-post-date, time, .post-date")
     date = date_tag.get_text(strip=True) if date_tag else None
 
-    # Author
+    # Author 
     author = None
     meta_author = soup.find("meta", attrs={"name": "author"})
     if meta_author and meta_author.get("content"):
         author = meta_author["content"]
-    elif article_container and article_container.select_one(".author, .byline, .post-author, .entry-author"):
-        author = article_container.select_one(
-            ".author, .byline, .post-author, .entry-author"
-        ).get_text(strip=True)
+    elif soup.select_one(".author, .byline, .post-author, .entry-author"):
+        author = soup.select_one(".author, .byline, .post-author, .entry-author").get_text(strip=True)
     else:
-        possible_author = None
-        for span in soup.find_all(["span", "p", "div"]):
-            text = span.get_text(strip=True)
-            lower = text.lower()
-            if any(x in lower for x in ["@", "phone", "p:", "investor", "relations", "igc@"]):
-                continue
-            if "rosalyn christian" in lower or "john nesbett" in lower:
-                possible_author = text
-                break
-        author = possible_author or "Rosalyn Christian / John Nesbett"
+        text_lower = soup.get_text(" ", strip=True).lower()
+        if "rosalyn christian" in text_lower:
+            author = "Rosalyn Christian"
+        elif "john nesbett" in text_lower:
+            author = "John Nesbett"
+        else:
+            author = "IGC Pharma"
 
-    # Content
+    # Content 
+    article_container = soup.select_one("article, .elementor-post, .entry-content, main, .post")
     content_container = article_container or soup
     paragraphs = content_container.find_all("p")
     content = "\n".join(p.get_text(" ", strip=True) for p in paragraphs if p.get_text(strip=True))
 
-    # Cleaning unwanted trailing sections safely
+    # Clean unwanted sections
     content = re.sub(
         r"(Contact Information.*|Forward[- ]Looking Statements.*|Recent Post.*|Related Posts.*)",
         "",
         content,
         flags=re.DOTALL | re.IGNORECASE
     )
-
-    # Remove known author signatures or investor info
     content = re.sub(
         r"(Rosalyn Christian.*|John Nesbett.*|Investor Relations.*|VP of Clinical.*)",
         "",
         content,
         flags=re.IGNORECASE
     )
-
     content = re.sub(r"\n{2,}", "\n\n", content).strip()
 
     return {
@@ -128,7 +109,7 @@ def extract_igcpharma_content(path):
         "date": date,
         "author": author,
         "content": content,
-        "content_source": "html"
+        "content_source": "html",
     }
 
 # Parse saved HTML
