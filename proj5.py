@@ -22,7 +22,6 @@ titles = []
 
 # ----- IGC PHARMA -----
 def scrape_igcpharma():
-    """Scrape all Alzheimer-related article HTMLs from IGC Pharma's news page."""
     base_url = "https://igcpharma.com/category/news/"
     folder = "igcpharma_articles"
     os.makedirs(folder, exist_ok=True)
