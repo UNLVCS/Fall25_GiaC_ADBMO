@@ -683,7 +683,7 @@ def agenebio_metadata(folder="agenebio_articles"):
 
 # ----- USC -----
 def scrape_usc():
-    folder = "keck_articles"
+    folder = "usc_articles"
     os.makedirs(folder, exist_ok=True)
 
     base_url = "https://keck.usc.edu/news/tag/center-for-personalized-brain-health/"
@@ -693,7 +693,7 @@ def scrape_usc():
 
     while url:
         driver.get(url)
-        time.sleep(3)
+        time.sleep(10)
 
         soup = BeautifulSoup(driver.page_source, "html.parser")
         article_links = soup.select("h2 a, h3 a, a[href*='/news/']")
