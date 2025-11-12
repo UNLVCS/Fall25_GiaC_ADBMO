@@ -819,6 +819,136 @@ def usc_metadata(folder="usc_articles"):
         metadata.append(data)
     return metadata
 
+# ----- Teikoku scraper -----
+def scrape_teikoku():
+    folder = "teikoku_articles"
+    os.makedirs(folder, exist_ok=True)
+
+    base_url = "https://www.teikokuusa.com/company/news-press/"
+    url = base_url
+    page_num = 1
+    seen_links = set()
+
+    while url:
+        driver.get(url)
+        time.sleep(3) 
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        article_links = soup.select("a[href*='/company/news-press/'][title]")
+
+        if not article_links:
+            print("No articles found on this page.")
+            break
+
+        for a in article_links:
+            title = a.get_text(strip=True)
+            href = a.get("href")
+            if not href or "alzheimer" not in title.lower():
+                continue
+
+            full_link = urljoin(base_url, href)
+            if full_link in seen_links:
+                continue
+            seen_links.add(full_link)
+
+            driver.get(full_link)
+            time.sleep(2)
+
+            safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
+            html_path = os.path.join(folder, f"Teikoku_{safe_title}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+
+            print("Saved HTML:", title)
+
+        # Clicks next page button until no more pages 
+        next_page_selector = f"a.page.larger[title='Page {page_num+1}']"
+        next_tag = soup.select_one(next_page_selector)
+        if next_tag and next_tag.get("href"):
+            url = next_tag["href"]
+            page_num += 1
+            time.sleep(1)
+        else:
+            break
+
+def extract_teikoku_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h1.entry-title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
+
+    # Date 
+    date_text = None
+
+    # Common date tags
+    date_tag = soup.select_one("time, .post-date, .entry-date, .elementor-post-date")
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+
+    # Fallback
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    date = None
+    # Date cleaning
+    if date_text:
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
+        try:
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
+        except Exception:
+            parsed_date = pd.to_datetime(cleaned, errors="coerce")
+
+        if parsed_date is not None and not pd.isna(parsed_date):
+            date = parsed_date.strftime("%Y-%m-%d")
+
+    # Author
+    author = "Teikoku Pharma USA"
+
+    # Content
+    paragraphs = []
+    for container in soup.select("div.wp-block-post-content, div.post-content, span.wp-block-paragraph"):
+        for p in container.find_all("p"):
+            text = p.get_text(" ", strip=True)
+            if text:
+                paragraphs.append(text)
+
+    content = "\n".join(paragraphs)
+    summary = content[:500] if content else None
+
+    return {
+        "file": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": summary,
+        "content_source": "html"
+    }
+
+# Parse saved HTML
+def teikoku_metadata(folder="teikoku_articles"):
+    metadata = []
+    seen_titles = set()
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_teikoku_content(path)
+        normalized = re.sub(r'\s+', ' ', data["title"].strip().lower())
+        if normalized in seen_titles:
+            continue
+        seen_titles.add(normalized)
+        metadata.append(data)
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -828,6 +958,7 @@ def main():
     scrape_ucdavis()
     scrape_agenebio()
     scrape_usc()
+    scrape_teikoku()
 
     # Extract metadata and save CSVs
     meta = igcpharma_metadata()
@@ -860,6 +991,10 @@ def main():
     df.to_csv("usc_metadata.csv", index=False)
     print("Saved to usc_metadata.csv")
 
+    meta = teikoku_metadata()
+    df = pd.DataFrame(meta)
+    df.to_csv("teikoku_metadata.csv", index=False)
+    print("Saved to teikoku_metadata.csv")
     driver.quit()
 
 main()
