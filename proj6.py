@@ -226,7 +226,7 @@ def extract_asceneuron_content(path):
             if text and text not in paragraphs:
                 paragraphs.append(text)
     content = "\n".join(paragraphs)
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "filename": os.path.basename(path),       
@@ -298,7 +298,7 @@ def extract_aprinoia_content(path):
     if date_tag:
         date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
 
-    # If not found, search <em>, <strong>, and <p> tags for month/year
+    # Fallback
     if not date_text:
         for tag in soup.find_all(["em", "strong", "p"]):
             text = tag.get_text(" ", strip=True)
@@ -323,7 +323,7 @@ def extract_aprinoia_content(path):
     date = None
     if date_text:
         cleaned = (
-            date_text.replace("\u2013", "-")   # normalize en dash
+            date_text.replace("\u2013", "-")  
                      .replace("–", "-")
                      .replace("—", "-")
                      .strip()
@@ -368,7 +368,7 @@ def extract_aprinoia_content(path):
                 paragraphs.append(text)
 
     content = "\n".join(paragraphs)
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "file": os.path.basename(path),
@@ -502,7 +502,7 @@ def extract_ucdavis_content(path):
     paragraphs = content_container.find_all(["p", "li"])
     content = "\n".join(p.get_text(" ", strip=True) for p in paragraphs if p.get_text(strip=True))
 
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "filename": os.path.basename(path),
@@ -659,7 +659,7 @@ def extract_agenebio_content(path):
 
     content = "\n".join(cleaned_paragraphs)
     content = re.sub(r"^«\s*back.*?\n", "", content, flags=re.IGNORECASE)
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "filename": os.path.basename(path),
@@ -792,7 +792,7 @@ def extract_usc_content(path):
             if text:
                 paragraphs.append(text)
     content = "\n".join(paragraphs)
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "file": os.path.basename(path),
@@ -923,7 +923,7 @@ def extract_teikoku_content(path):
                 paragraphs.append(text)
 
     content = "\n".join(paragraphs)
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "file": os.path.basename(path),
@@ -1064,7 +1064,7 @@ def extract_treeway_content(path):
             lines = lines[1:]
     content = "\n".join(lines)
 
-    summary = content[:500] if content else None
+    summary = content[:750] if content else None
 
     return {
         "file": os.path.basename(path),
@@ -1091,6 +1091,148 @@ def treeway_metadata(folder="treeway_articles"):
         metadata.append(data)
     return metadata
 
+# ----- Annovis -----
+def scrape_annovis():
+    folder = "annovis_articles"
+    os.makedirs(folder, exist_ok=True)
+
+    base_url = "https://www.annovisbio.com/press-release"
+    url = base_url
+    seen_links = set()
+    page_num = 1
+
+    while url:
+        driver.get(url)
+        time.sleep(3)
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+
+        article_headers = soup.select("h5.blog-post-title")
+
+        if not article_headers:
+            print("No articles found on this page.")
+            break
+
+        for h5 in article_headers:
+            title = h5.get_text(strip=True)
+            a_tag = h5.find_parent("a") 
+            if not a_tag or "alzheimer" not in title.lower():
+                continue
+
+            href = a_tag.get("href")
+            full_link = urljoin(base_url, href)
+            if full_link in seen_links:
+                continue
+            seen_links.add(full_link)
+
+            driver.get(full_link)
+            time.sleep(2)
+
+            safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
+            html_path = os.path.join(folder, f"Annovis_{safe_title}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+
+            print("Saved HTML:", title)
+
+        # Clicks next page button until no more pages 
+        next_tag = soup.select_one("a.w-pagination-next[aria-label='Next Page']")
+        if next_tag and next_tag.get("href"):
+            url = urljoin(base_url, next_tag.get("href"))
+            page_num += 1
+            time.sleep(1)
+        else:
+            break
+
+# ----- Annovis Metadata -----
+def extract_annovis_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h5.blog-post-title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "").replace("_", " ")
+
+    # Date 
+    date_text = None
+
+    # Common date tags
+    date_tag = soup.select_one("time, .post-date, .entry-date, .elementor-post-date")
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+
+    # Fallback
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    # Try parsing the date
+    date = None
+    # Date cleaning
+    if date_text:
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
+        try:
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
+        except Exception:
+            parsed_date = pd.to_datetime(cleaned, errors="coerce")
+
+        if parsed_date is not None and not pd.isna(parsed_date):
+            date = parsed_date.strftime("%Y-%m-%d")
+
+    # Author
+    author = "Annovis Bio"
+
+    # Content
+    container = soup.select_one("div.blog-post-content, article, main") or soup
+    paragraphs = []
+
+    for p in container.find_all("p"):
+        text = p.get_text(" ", strip=True)
+        if not text:
+            continue
+
+        # Clean irrelevant text
+        text = re.sub(
+            r'^[A-Z][A-Z\s,.-]*,\s\w{3,9}\.?\s\d{1,2},\s?\d{4}.*?--.*?\)\s*,?\s*', 
+            '', 
+            text
+        )
+        text = re.sub(r'^\(NYSE: [A-Z]+\)\s*', '', text)
+
+        if text:
+            paragraphs.append(text)
+
+    content = " ".join(paragraphs)
+    content = re.sub(r'\n{2,}', '\n', content).strip()
+
+    summary = content[:750] if content else None
+
+    return {
+        "filename": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": summary,
+        "content_source": "html"
+    }
+
+# Parse saved HTML
+def annovis_metadata(folder="annovis_articles"):
+    metadata = []
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_annovis_content(path)
+        metadata.append(data)
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1102,6 +1244,7 @@ def main():
     scrape_usc()
     scrape_teikoku()
     srcape_treeway()
+    scrape_annovis()
 
     # Extract metadata and save CSVs
     meta = igcpharma_metadata()
@@ -1138,11 +1281,18 @@ def main():
     df = pd.DataFrame(meta)
     df.to_csv("teikoku_metadata.csv", index=False)
     print("Saved to teikoku_metadata.csv")
-    driver.quit()
 
     meta = treeway_metadata()
     df = pd.DataFrame(meta)
     df.to_csv("treeway_metadata.csv", index=False)
     print("Saved to treeway_metadata.csv")
+
+    meta = annovis_metadata()
+    df = pd.DataFrame(meta)
+    df.to_csv("annovis_metadata.csv", index=False)
+    print("Saved to annovis_metadata.csv")
+
+    driver.quit()
+
 
 main()
