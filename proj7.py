@@ -1369,6 +1369,144 @@ def stanford_metadata(folder="stanford_articles"):
         metadata.append(data)
     return metadata
 
+# ----- Eisai -----
+def scrape_eisai():
+    base_url = "https://www.eisai.com/news/index.html"
+    folder = "eisai_articles"
+    pdf_folder = "eisai_pdfs"
+    os.makedirs(folder, exist_ok=True)
+    os.makedirs(pdf_folder, exist_ok=True)
+
+    driver.get(base_url)
+    time.sleep(3)
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+
+    for a_tag in soup.select("a.list-news-link"):
+        title = a_tag.get_text(strip=True)
+        href = a_tag.get("href")
+        full_link = urljoin(base_url, href) if href else None
+
+        if not title or not full_link or "alzheimer" not in title.lower():
+            continue
+
+        driver.get(full_link)
+        time.sleep(2)
+
+        # Save HTML
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title[:60])
+        html_path = os.path.join(folder, f"{safe_title}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+
+        print("Saved HTML:", title)
+
+        # Downloads PDF when foudnd
+        detail_soup = BeautifulSoup(driver.page_source, "html.parser")
+        pdf_link_tag = detail_soup.find("a", string=re.compile(r"Download", re.I))
+        if not pdf_link_tag:
+            pdf_link_tag = detail_soup.find("a", href=re.compile(r"\.pdf$", re.I))
+
+        if pdf_link_tag and pdf_link_tag.get("href"):
+            pdf_url = urljoin(base_url, pdf_link_tag["href"])
+            pdf_filename = f"Eisai_{safe_title}.pdf"
+            pdf_path = os.path.join(pdf_folder, pdf_filename)
+
+            try:
+                response = requests.get(pdf_url, timeout=15)
+                if response.status_code == 200:
+                    with open(pdf_path, "wb") as pdf_file:
+                        pdf_file.write(response.content)
+                else:
+                    print(f"Failed to download PDF ({response.status_code}): {pdf_url}")
+            except Exception as e:
+                print(f"Error downloading {pdf_url}: {e}")
+
+# ----- Eisai Metadata -----
+def extract_eisai_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h1, h2, h3, .news-title")
+    title = title_tag.get_text(strip=True) if title_tag else None
+
+    if not title:
+        head_title_tag = soup.find("title")
+        if head_title_tag and head_title_tag.get_text(strip=True):
+            title = head_title_tag.get_text(strip=True)
+        else:
+            title = os.path.basename(path).replace(".html", "")
+
+    # Date
+    date = None
+    date_text = None
+
+    time_tag = soup.select_one("time, .news-date")
+    if time_tag:
+        date_text = time_tag.get("datetime") or time_tag.get_text(" ", strip=True)
+
+    # Fallback
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(Jan(uary)?|Feb(ruary)?|Mar(ch)?|Apr(il)?|May|Jun(e)?|Jul(y)?|Aug(ust)?|Sep(t)?(ember)?|Oct(ober)?|Nov(ember)?|Dec(ember)?)\s+\d{1,2},?\s+\d{4}",
+            full_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            date_text = match.group(0)
+        else:
+            match2 = re.search(
+                r"(Jan(uary)?|Feb(ruary)?|Mar(ch)?|Apr(il)?|May|Jun(e)?|Jul(y)?|Aug(ust)?|Sep(t)?(ember)?|Oct(ober)?|Nov(ember)?|Dec(ember)?)\s+\d{4}",
+                full_text,
+                flags=re.IGNORECASE,
+            )
+            if match2:
+                date_text = match2.group(0)
+
+    if date_text:
+        date_text = date_text.replace("\u2013", "-").replace("–", "-").replace("—", "-").strip()
+        try:
+            parsed_date = dateparser.parse(date_text, fuzzy=True)
+            if parsed_date is not None:
+                date = parsed_date.strftime("%Y-%m-%d")
+        except Exception:
+            date = None
+
+    # Author
+    author = None
+    meta_author = soup.find("meta", attrs={"name": "author"})
+    if meta_author and meta_author.get("content"):
+        author = meta_author["content"]
+    else:
+        author = "Eisai"
+
+    # Content
+    article_container = soup.select_one("div.news-detail, .news-content, article")
+    content_container = article_container or soup
+    paragraphs = content_container.find_all("p")
+    content = "\n".join(p.get_text(" ", strip=True) for p in paragraphs if p.get_text(strip=True))
+
+    return {
+        "filename": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": content,
+        "content_source": "html",
+    }
+
+# ----- Parse saved HTML -----
+def eisai_metadata(folder="eisai_articles"):
+    metadata = []
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_eisai_content(path)
+        metadata.append(data)
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1382,6 +1520,7 @@ def main():
     scrape_treeway()
     scrape_annovis()
     scrape_stanford()
+    scrape_elsai()
 
     # Extract metadata and save CSVs
     meta = igcpharma_metadata()
@@ -1433,6 +1572,11 @@ def main():
     df = pd.DataFrame(meta)
     df.to_csv("stanford_metadata.csv", index=False)
     print("Saved to stanford_metadata.csv")
+
+    meta = eisai_metadata()
+    df = pd.DataFrame(meta)
+    df.to_csv("eisai_metadata.csv", index=False)
+    print("Saved to eisai_metadata.csv")
 
     driver.quit()
 
