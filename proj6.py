@@ -51,7 +51,6 @@ def scrape_igcpharma():
 
         print("Saved HTML:", title)
 
-
 def extract_igcpharma_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
@@ -277,7 +276,6 @@ def scrape_aprinoia():
 
         print("Saved HTML:", title)
 
-
 # ----- Aprinoia Metadata -----
 def extract_aprinoia_content(path):
     with open(path, "r", encoding="utf-8") as f:
@@ -378,7 +376,6 @@ def extract_aprinoia_content(path):
         "content": summary,
         "content_source": "html"
     }
-
 
 # Parse saved HTML
 def aprinoia_metadata(folder="aprinoia_articles"):
@@ -1038,13 +1035,11 @@ def extract_treeway_content(path):
             except:
                 date = None
 
-
     # Author
     author = "Treeway"
     meta_author = soup.find("meta", attrs={"name": "author"})
     if meta_author and meta_author.get("content"):
         author = meta_author.get("content")
-
 
     # Content
     paragraphs = []
@@ -1243,7 +1238,7 @@ def main():
     scrape_agenebio()
     scrape_usc()
     scrape_teikoku()
-    srcape_treeway()
+    scrape_treeway()
     scrape_annovis()
 
     # Extract metadata and save CSVs
