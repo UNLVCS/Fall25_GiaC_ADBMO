@@ -1520,7 +1520,7 @@ def main():
     scrape_treeway()
     scrape_annovis()
     scrape_stanford()
-    scrape_elsai()
+    scrape_eisai()
 
     # Extract metadata and save CSVs
     meta = igcpharma_metadata()
