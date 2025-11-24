@@ -20,6 +20,11 @@ driver = webdriver.Chrome(options=options)
 
 titles = []
 
+# Saves in JSON
+def save_json(data, filename):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        
 # ----- IGC PHARMA -----
 def scrape_igcpharma():
     base_url = "https://igcpharma.com/category/news/"
@@ -119,6 +124,7 @@ def igcpharma_metadata(folder="igcpharma_articles"):
         path = os.path.join(folder, file)
         data = extract_igcpharma_content(path)
         metadata.append(data)
+    save_json(metadata, "igcpharma_metadata.json")
     return metadata
 
 # ----- ASCENEURON -----
@@ -243,8 +249,9 @@ def asceneuron_metadata(folder="asceneuron_articles"):
         if not file.endswith(".html"):
             continue
         path = os.path.join(folder, file)
-        data = extract_asceneuron_content(path)
+        data = extract_igcpharma_content(path)
         metadata.append(data)
+    save_json(metadata, "asceneuron_metadata.json")
     return metadata
 
 # ----- Aprinoia -----
@@ -381,22 +388,13 @@ def extract_aprinoia_content(path):
 # Parse saved HTML
 def aprinoia_metadata(folder="aprinoia_articles"):
     metadata = []
-    seen_titles = set()
-
     for file in os.listdir(folder):
         if not file.endswith(".html"):
             continue
-
         path = os.path.join(folder, file)
         data = extract_aprinoia_content(path)
-
-        normalized_title = re.sub(r'\s+', ' ', data["title"].strip().lower())
-        if normalized_title in seen_titles:
-            print(f"🔁 Skipping duplicate: {data['title']}")
-            continue
-
-        seen_titles.add(normalized_title)
         metadata.append(data)
+    save_json(metadata, "aprinoia_metadata.json")
     return metadata
 
 # ----- UC Davis -----
@@ -520,6 +518,7 @@ def ucdavis_metadata(folder="ucdavis_articles"):
         path = os.path.join(folder, file)
         data = extract_ucdavis_content(path)
         metadata.append(data)
+    save_json(metadata, "ucdavis_metadata.json")
     return metadata
 
 # ----- AGeneBio -----
@@ -675,8 +674,9 @@ def agenebio_metadata(folder="agenebio_articles"):
         if not file.endswith(".html"):
             continue
         path = os.path.join(folder, file)
-        data = extract_agenebio_content(path)
+        data = extract_ucdavis_content(path)
         metadata.append(data)
+    save_json(metadata, "agenebio_metadata.json")
     return metadata
 
 # ----- USC -----
@@ -816,6 +816,7 @@ def usc_metadata(folder="usc_articles"):
             continue
         seen_titles.add(normalized_title)
         metadata.append(data)
+    save_json(metadata, "usc_metadata.json")
     return metadata
 
 # ----- Teikoku -----
@@ -948,6 +949,7 @@ def teikoku_metadata(folder="teikoku_articles"):
             continue
         seen_titles.add(normalized)
         metadata.append(data)
+    save_json(metadata, "teikoku_metadata.json")
     return metadata
 
 # ----- Treeway -----
@@ -1087,6 +1089,7 @@ def treeway_metadata(folder="treeway_articles"):
             continue
         seen_titles.add(normalized)
         metadata.append(data)
+    save_json(metadata, "treeway_metadata.json")
     return metadata
 
 # ----- Annovis -----
@@ -1230,6 +1233,7 @@ def annovis_metadata(folder="annovis_articles"):
         path = os.path.join(folder, file)
         data = extract_annovis_content(path)
         metadata.append(data)
+    save_json(metadata, "annovis_metadata.json")
     return metadata
 
 # ----- Stanford -----
@@ -1367,6 +1371,8 @@ def stanford_metadata(folder="stanford_articles"):
 
         seen_titles.add(normalized_title)
         metadata.append(data)
+
+    save_json(metadata, "stanford_metadata.json")
     return metadata
 
 # ----- Eisai -----
@@ -1505,6 +1511,8 @@ def eisai_metadata(folder="eisai_articles"):
         path = os.path.join(folder, file)
         data = extract_eisai_content(path)
         metadata.append(data)
+    
+    save_json(metadata, "eisai_metadata.json")
     return metadata
 
 # ----- MAIN FUNCTION -----
@@ -1522,60 +1530,38 @@ def main():
     scrape_stanford()
     scrape_eisai()
 
-    # Extract metadata and save CSVs
-    meta = igcpharma_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("igcpharma_metadata.csv", index=False)
-    print("Saved to igcpharma_metadata.csv")
+    # Extract metadata and save JSON
+    igcpharma_metadata()
+    print("IGC Pharma JSON saved.")
 
-    meta = asceneuron_metadata()
-    df_meta = pd.DataFrame(meta)
-    df_meta.to_csv("asceneuron_metadata.csv", index=False)
-    print("Saved to asceneuron_metadata.csv")
+    asceneuron_metadata()
+    print("AsceNeuron JSON saved.")
 
-    meta = aprinoia_metadata()
-    df_meta = pd.DataFrame(meta)
-    df_meta.to_csv("aprinoia_metadata.csv", index=False)
-    print("Saved to aprinoia_metadata.csv")    
+    aprinoia_metadata()
+    print("Aprinoia JSON saved.")    
+    
+    ucdavis_metadata()
+    print("UC Davis JSON saved.")
 
-    meta = ucdavis_metadata()
-    df_meta = pd.DataFrame(meta)
-    df_meta.to_csv("ucdavis_metadata.csv", index=False)
-    print("Saved to ucdavis_metadata.csv")
+    agenebio_metadata()
+    print("AGeneBio JSON saved.") 
 
-    meta = agenebio_metadata()
-    df_meta = pd.DataFrame(meta)
-    df_meta.to_csv("agenebio_metadata.csv", index=False)
-    print("Saved to agenebio_metadata.csv") 
+    usc_metadata()
+    print("USC JSON saved.")
 
-    meta = usc_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("usc_metadata.csv", index=False)
-    print("Saved to usc_metadata.csv")
+    teikoku_metadata()
+    print("Teikoku JSON saved.")
 
-    meta = teikoku_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("teikoku_metadata.csv", index=False)
-    print("Saved to teikoku_metadata.csv")
+    treeway_metadata()
+    print("Treeway JSON saved.")
 
-    meta = treeway_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("treeway_metadata.csv", index=False)
-    print("Saved to treeway_metadata.csv")
+    annovis_metadata()
+    print("Annovis JSON saved.")
 
-    meta = annovis_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("annovis_metadata.csv", index=False)
-    print("Saved to annovis_metadata.csv")
+    stanford_metadata()
+    print("Standford JSON saved.")
 
-    meta = stanford_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("stanford_metadata.csv", index=False)
-    print("Saved to stanford_metadata.csv")
-
-    meta = eisai_metadata()
-    df = pd.DataFrame(meta)
-    df.to_csv("eisai_metadata.csv", index=False)
+    eisai_metadata()
     print("Saved to eisai_metadata.csv")
 
     driver.quit()
