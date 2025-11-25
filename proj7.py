@@ -4,6 +4,8 @@ import re
 import os
 import json 
 import requests
+import logging
+import pdfplumber
 from selenium import webdriver  
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By 
@@ -1515,6 +1517,136 @@ def eisai_metadata(folder="eisai_articles"):
     save_json(metadata, "eisai_metadata.json")
     return metadata
 
+# ----- ABScience -----
+# To supress warnings
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
+def scrape_abscience():
+    base_url = "https://www.ab-science.com/news-and-media/press-releases/"
+    html_folder = "abscience_articles"
+    os.makedirs(html_folder, exist_ok=True)
+
+    driver.get(base_url)
+    time.sleep(2)
+
+    saved_articles = []
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    articles = soup.select("h3.entry-title a")
+
+    for a in articles:
+        title = a.get_text(strip=True)
+        href = urljoin(base_url, a.get("href"))
+
+        if "alzheimer" not in title.lower():
+            continue
+
+        driver.get(href)
+        time.sleep(2)
+        
+        # Save HTML
+        html_content = driver.page_source
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title[:60])
+        html_path = os.path.join(html_folder, f"ABScience_{safe_title}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        detail_soup = BeautifulSoup(html_content, "html.parser")
+
+        # PDF download and content extract
+        pdf_folder = "abscience_pdfs"
+        os.makedirs(pdf_folder, exist_ok=True)
+
+        pdf_path = None
+        content = None
+        pdf_tag = detail_soup.find("a", href=re.compile(r"\.pdf", re.I))
+        if pdf_tag and pdf_tag.get("href"):
+            pdf_url = urljoin(base_url, pdf_tag["href"])
+            pdf_path = os.path.join(pdf_folder, f"ABScience_{safe_title}.pdf")
+            try:
+                response = requests.get(pdf_url, timeout=10)
+                if response.status_code == 200:
+                    with open(pdf_path, "wb") as f:
+                        f.write(response.content)
+                    text = ""
+                    with pdfplumber.open(pdf_path) as pdf:
+                        for page in pdf.pages:
+                            page_text = page.extract_text()
+                            if page_text:
+                                text += page_text + "\n\n"
+                    content = text.strip()[:750] if text else None
+            except Exception as e:
+                print("Error downloading or reading PDF:", e)
+
+        # Fallback if PDF missing
+        if not content:
+            paragraphs = detail_soup.select("div.entry-content p, article p")
+            html_text = " ".join([p.get_text(" ", strip=True) for p in paragraphs])
+            content = html_text[:750] if html_text else None
+
+        saved_articles.append({
+            "html_path": html_path,
+            "pdf_path": pdf_path,
+            "title": title,
+            "content": content
+        })
+
+        print("Saved HTML:", title)
+
+    return saved_articles
+
+# ----- ABScience Metadata -----
+def extract_abscience_content(article_dict):
+    html_path = article_dict["html_path"]
+    pdf_path = article_dict.get("pdf_path")
+    content = article_dict["content"]
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h1.entry-title") or soup.find("title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(html_path)
+
+    # Date
+    date = None
+    article_tag = soup.select_one("article.post")
+    if article_tag and article_tag.get("data-date"):
+        try:
+            parsed = dateparser.parse(article_tag["data-date"], fuzzy=True)
+            date = parsed.strftime("%Y-%m-%d")
+        except:
+            pass
+    if not date:
+        date_tag = soup.select_one("time, .entry-date, .post-date")
+        if date_tag:
+            try:
+                date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+                parsed = dateparser.parse(date_text, fuzzy=True)
+                date = parsed.strftime("%Y-%m-%d")
+            except:
+                pass
+
+    # Author
+    author = "AB Science"
+    meta_author = soup.find("meta", attrs={"name": "author"})
+    if meta_author and meta_author.get("content"):
+        author = meta_author.get("content")
+
+    return {
+        "file": os.path.basename(html_path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": content,
+        "content_source": "pdf" if pdf_path else "html"
+    }
+
+# Saved metadata
+def abscience_metadata(saved_articles, json_file="abscience_metadata.json"):
+    metadata = [extract_abscience_content(a) for a in saved_articles]
+    save_json(metadata, json_file)
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1529,6 +1661,7 @@ def main():
     scrape_annovis()
     scrape_stanford()
     scrape_eisai()
+    scrape_abscience()
 
     # Extract metadata and save JSON
     igcpharma_metadata()
@@ -1564,6 +1697,11 @@ def main():
     eisai_metadata()
     print("Saved to eisai_metadata.csv")
 
+    # Needed for downloaded files
+    saved_articles = scrape_abscience()
+    abscience_metadata(saved_articles) 
+    print("ABScience JSON saved.")
+    
     driver.quit()
 
 main()
