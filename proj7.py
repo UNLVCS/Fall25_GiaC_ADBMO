@@ -674,7 +674,7 @@ def agenebio_metadata(folder="agenebio_articles"):
         if not file.endswith(".html"):
             continue
         path = os.path.join(folder, file)
-        data = extract_ucdavis_content(path)
+        data = extract_agenebio_content(path)
         metadata.append(data)
     save_json(metadata, "agenebio_metadata.json")
     return metadata
@@ -1659,7 +1659,9 @@ def main():
     scrape_annovis()
     scrape_stanford()
     scrape_eisai()
-    scrape_abscience()
+
+    # Needed for downloaded files
+    saved_articles = scrape_abscience()
 
     # Extract metadata and save JSON
     igcpharma_metadata()
@@ -1695,8 +1697,6 @@ def main():
     eisai_metadata()
     print("Saved to eisai_metadata.csv")
 
-    # Needed for downloaded files
-    saved_articles = scrape_abscience()
     abscience_metadata(saved_articles) 
     print("ABScience JSON saved.")
     
