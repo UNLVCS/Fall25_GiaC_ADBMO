@@ -20,8 +20,6 @@ options = Options()
 options.add_argument("--headless")
 driver = webdriver.Chrome(options=options)
 
-titles = []
-
 # Saves in JSON
 def save_json(data, filename):
     with open(filename, "w", encoding="utf-8") as f:
