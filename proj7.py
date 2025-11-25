@@ -1502,7 +1502,7 @@ def extract_eisai_content(path):
         "content_source": "html",
     }
 
-# ----- Parse saved HTML -----
+# Parse saved HTML
 def eisai_metadata(folder="eisai_articles"):
     metadata = []
     for file in os.listdir(folder):
