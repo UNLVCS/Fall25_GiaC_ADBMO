@@ -56,6 +56,7 @@ def scrape_igcpharma():
 
         print("Saved HTML:", title)
 
+# ----- IGCPharma Metadata -----
 def extract_igcpharma_content(path):
     with open(path, "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
@@ -1645,6 +1646,115 @@ def abscience_metadata(saved_articles, json_file="abscience_metadata.json"):
     save_json(metadata, json_file)
     return metadata
 
+# ----- INmuneBio -----
+def scrape_inmunebio():
+    base_url = "https://www.inmunebio.com/index.php/newsroom/2025-news"
+    folder = "inmunebio_articles"
+    os.makedirs(folder, exist_ok=True)
+
+    driver.get(base_url)
+    time.sleep(2)
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+
+    articles = soup.select("p.news__title.textP")
+    for p in articles:
+        title = p.get_text(strip=True)
+        if "alzheimer" not in title.lower():
+            continue
+
+        link_tag = p.find_parent("a", href=True)
+        if not link_tag:
+            continue
+        href = urljoin(base_url, link_tag["href"])
+
+        driver.get(href)
+        time.sleep(2)
+
+        # Save HTML to folder
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title[:100])
+        path = os.path.join(folder, f"{safe_title}.html")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+
+        print("Saved HTML:", title)
+
+# ----- INmuneBio Metadata -----
+def extract_inmunebio_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("p.news__title.textP, h1, .title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
+
+    # Date
+    date_text = None
+    date_tag = soup.select_one("time, .post-date, .entry-date, .elementor-post-date")
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+
+    # Fallback
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    date = None
+    if date_text:
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
+        try:
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
+        except Exception:
+            parsed_date = None
+        if parsed_date:
+            date = parsed_date.strftime("%Y-%m-%d")
+
+    # Author
+    author = "INmune Bio"
+
+    # Content
+    article_container = soup.select_one("article, main, .content, .news-detail") or soup
+    paragraphs = article_container.find_all("p")
+    content = "\n".join(p.get_text(" ", strip=True) for p in paragraphs if p.get_text(strip=True))
+
+    # Clean unwanted sections
+    patterns_to_remove = [
+        r"Recent News",
+        r"Read More",
+        r"Select News Releases",
+        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \s*\d{4}\b"
+    ]
+    for pattern in patterns_to_remove:
+        content = re.sub(pattern, "", content, flags=re.IGNORECASE)
+
+    content = re.sub(r"\n{2,}", "\n\n", content).strip()
+
+    return {
+        "filename": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": content,
+        "content_source": "html",
+    }
+
+# Parse saved HTML
+def inmunebio_metadata(folder="inmunebio_articles"):
+    metadata = []
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_inmunebio_content(path)
+        metadata.append(data)
+    save_json(metadata, "inmunebio_metadata.json")
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1659,6 +1769,7 @@ def main():
     scrape_annovis()
     scrape_stanford()
     scrape_eisai()
+    scrape_inmunebio()
 
     # Needed for downloaded files
     saved_articles = scrape_abscience()
@@ -1692,13 +1803,16 @@ def main():
     print("Annovis JSON saved.")
 
     stanford_metadata()
-    print("Standford JSON saved.")
+    print("Stanford JSON saved.")
 
     eisai_metadata()
     print("Saved to eisai_metadata.csv")
 
     abscience_metadata(saved_articles) 
     print("ABScience JSON saved.")
+
+    inmunebio_metadata()
+    print("INmuneBio JSON saved.")
     
     driver.quit()
 
