@@ -6,6 +6,7 @@ import json
 import requests
 import logging
 import pdfplumber
+import hashlib 
 from selenium import webdriver  
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By 
@@ -1755,6 +1756,101 @@ def inmunebio_metadata(folder="inmunebio_articles"):
     save_json(metadata, "inmunebio_metadata.json")
     return metadata
 
+# ----- Vandria -----
+def scrape_vandria():
+    base_url = "https://vandria.com/news/"
+    folder = "vandria_articles"
+    os.makedirs(folder, exist_ok=True)
+
+    driver.get(base_url)
+    time.sleep(2)
+
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    seen_urls = set()
+
+    for a in soup.select("a.title"):
+        title = a.get_text(strip=True)
+        href = urljoin(base_url, a.get("href"))
+        href = href.rstrip("/")
+
+        if not title or not href:
+            continue
+        if "alzheimer" not in title.lower():
+            continue
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
+
+        driver.get(href)
+        time.sleep(2)
+
+        # Use URL hash for filename
+        url_hash = hashlib.md5(href.encode("utf-8")).hexdigest()[:12]
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title[:40])
+        filename = f"{safe_title}_{url_hash}.html"
+
+        html_path = os.path.join(folder, filename)
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+
+        print("Saved HTML:", title)
+
+# ----- Vandria Metadata -----
+def extract_vandria_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h1, h2, .entry-title, .et_pb_title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
+
+    # Date
+    date_tag = soup.find("time")
+    date = date_tag.get_text(strip=True) if date_tag else None
+
+    # Author
+    author = "Vandria"
+
+    # Content
+    article_container = soup.select_one("article, .entry-content, main, .post")
+    content_container = article_container or soup
+    paragraphs = content_container.find_all("p")
+    content = "\n".join(p.get_text(" ", strip=True) for p in paragraphs if p.get_text(strip=True))
+
+    # Clean irrelevant text
+    content = re.sub(r"(Recent News.*)$", "", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"\n{2,}", "\n\n", content).strip()
+
+    return {
+        "filename": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": content,
+        "content_source": "html"
+    }
+
+# Parse saved HMTL
+def vandria_metadata(folder="vandria_articles"):
+    metadata = []
+    seen_titles = set()
+
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_vandria_content(path)
+
+        # Removed duplicate in JSON file
+        if data["title"] in seen_titles:
+            continue
+        seen_titles.add(data["title"])
+
+        metadata.append(data)
+
+    save_json(metadata, "vandria_metadata.json")
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1770,6 +1866,7 @@ def main():
     scrape_stanford()
     scrape_eisai()
     scrape_inmunebio()
+    scrape_vandria()
 
     # Needed for downloaded files
     saved_articles = scrape_abscience()
@@ -1813,6 +1910,9 @@ def main():
 
     inmunebio_metadata()
     print("INmuneBio JSON saved.")
+
+    vandria_metadata()
+    print("Vandria JSON saved.")
     
     driver.quit()
 
