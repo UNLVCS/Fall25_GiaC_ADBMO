@@ -1859,7 +1859,9 @@ def scrape_priavoid():
     os.makedirs(folder, exist_ok=True)
     os.makedirs(pdf_folder, exist_ok=True)
 
-    while base_url:
+    page_url = base_url 
+
+    while page_url: 
         driver.get(page_url)
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, "html.parser")
@@ -1882,7 +1884,7 @@ def scrape_priavoid():
                 f.write(driver.page_source)
             print("Saved HTML:", title)
 
-            # Download PDFs when found
+            # Download PDFs 
             detail_soup = BeautifulSoup(driver.page_source, "html.parser")
             pdf_link_tag = detail_soup.find("a", string=re.compile(r"Download", re.I))
             if not pdf_link_tag:
