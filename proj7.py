@@ -1408,7 +1408,7 @@ def scrape_eisai():
 
         print("Saved HTML:", title)
 
-        # Downloads PDF when foudnd
+        # Downloads PDF when found
         detail_soup = BeautifulSoup(driver.page_source, "html.parser")
         pdf_link_tag = detail_soup.find("a", string=re.compile(r"Download", re.I))
         if not pdf_link_tag:
@@ -1851,6 +1851,151 @@ def vandria_metadata(folder="vandria_articles"):
     save_json(metadata, "vandria_metadata.json")
     return metadata
 
+# ----- Priavoid -----
+def scrape_priavoid():
+    base_url = "https://priavoid.com/news-and-events/"
+    folder = "priavoid_articles"
+    pdf_folder = "priavoid_pdfs"
+    os.makedirs(folder, exist_ok=True)
+    os.makedirs(pdf_folder, exist_ok=True)
+
+    while base_url:
+        driver.get(page_url)
+        time.sleep(3)
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+
+        for h3 in soup.find_all("h3"):
+            title = h3.get_text(strip=True)
+            link_tag = h3.find("a", href=True)
+            href = urljoin(base_url, link_tag["href"]) if link_tag else None
+
+            if not title or not href or "alzheimer" not in title.lower():
+                continue
+
+            driver.get(href)
+            time.sleep(2)
+
+            # Save HTML
+            safe_title = re.sub(r'[^a-zA-Z0-9_-]', "_", title[:60])
+            html_path = os.path.join(folder, f"{safe_title}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            print("Saved HTML:", title)
+
+            # Download PDFs when found
+            detail_soup = BeautifulSoup(driver.page_source, "html.parser")
+            pdf_link_tag = detail_soup.find("a", string=re.compile(r"Download", re.I))
+            if not pdf_link_tag:
+                pdf_link_tag = detail_soup.find("a", href=re.compile(r"\.pdf$", re.I))
+
+            if pdf_link_tag and pdf_link_tag.get("href"):
+                pdf_url = urljoin(base_url, pdf_link_tag["href"])
+                pdf_filename = f"Priavoid_{safe_title}.pdf"
+                pdf_path = os.path.join(pdf_folder, pdf_filename)
+                try:
+                    response = requests.get(pdf_url, timeout=15)
+                    if response.status_code == 200:
+                        with open(pdf_path, "wb") as pdf_file:
+                            pdf_file.write(response.content)
+                    else:
+                        print(f"Failed to download PDF ({response.status_code}): {pdf_url}")
+                except Exception as e:
+                    print(f"Error downloading {pdf_url}: {e}")
+
+        # Next page
+        next_btn = soup.find("a", class_="pagination-next", rel="next")
+        if next_btn and next_btn.get("href"):
+            page_url = urljoin(base_url, next_btn["href"])
+        else:
+            page_url = None
+
+# ----- Priavoid Metadata -----
+def extract_priavoid_content(path):
+    with open(path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # Title
+    title_tag = soup.select_one("h1, h2, h3, .entry-title")
+    title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
+
+    # Date
+    date_text = None
+    date_tag = soup.select_one("time.entry-date, .post-date, .entry-date, .elementor-post-date")
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(Jan(uary)?|Feb(ruary)?|Mar(ch)?|Apr(il)?|May|Jun(e)?|Jul(y)?|Aug(ust)?|Sep(t)?(ember)?|Oct(ober)?|Nov(ember)?|Dec(ember)?)\s+\d{1,2},?\s+\d{4}",
+            full_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            date_text = match.group(0)
+    date = None
+    if date_text:
+        try:
+            parsed_date = dateparser.parse(date_text, fuzzy=True)
+            date = parsed_date.strftime("%Y-%m-%d")
+        except Exception:
+            date = None
+
+    # Author
+    author = "Priavoid"
+    meta_author = soup.find("meta", attrs={"name": "author"})
+    if meta_author and meta_author.get("content"):
+        author = meta_author["content"]
+
+    # Content
+    article_container = soup.select_one("article, main, .entry-content")
+    content_container = article_container or soup
+    paragraphs = content_container.find_all("p")
+    clean_paragraphs = []
+
+    # Clean irrelevant text
+    for p in paragraphs:
+        text = p.get_text(" ", strip=True)
+        if not text:
+            continue
+        if re.fullmatch(r'[\d\n\s,.-]+', text):
+            continue
+        try:
+            dateparser.parse(text, fuzzy=False)
+            continue
+        except (ValueError, OverflowError):
+            pass
+        if re.match(
+            r"^[A-Za-zäöüÄÖÜß\s\-]+,\s*[A-Za-z\s\-]*,\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\.?\s+\d{1,2},?\s+\d{4}",
+            text
+        ):
+            continue
+        clean_paragraphs.append(text)
+
+    content = "\n".join(clean_paragraphs)
+    content = re.sub(r"(Contact Information.*|Forward[- ]Looking Statements.*|Related Posts.*|Recent News.*)", "", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"\n{2,}", "\n\n", content).strip()
+
+    return {
+        "filename": os.path.basename(path),
+        "title": title,
+        "date": date,
+        "author": author,
+        "content": content,
+        "content_source": "html",
+    }
+
+# Parse saved HTML
+def priavoid_metadata(folder="priavoid_articles"):
+    metadata = []
+    for file in os.listdir(folder):
+        if not file.endswith(".html"):
+            continue
+        path = os.path.join(folder, file)
+        data = extract_priavoid_content(path)
+        metadata.append(data)
+    save_json(metadata, "priavoid_metadata.json")
+    return metadata
+
 # ----- MAIN FUNCTION -----
 def main():
     # Runs all scrapers
@@ -1867,6 +2012,7 @@ def main():
     scrape_eisai()
     scrape_inmunebio()
     scrape_vandria()
+    scrape_priavoid()
 
     # Needed for downloaded files
     saved_articles = scrape_abscience()
@@ -1903,7 +2049,7 @@ def main():
     print("Stanford JSON saved.")
 
     eisai_metadata()
-    print("Saved to eisai_metadata.csv")
+    print("Eisai JSON saved.")
 
     abscience_metadata(saved_articles) 
     print("ABScience JSON saved.")
@@ -1913,6 +2059,9 @@ def main():
 
     vandria_metadata()
     print("Vandria JSON saved.")
+
+    priavoid_metadata()
+    print("Priavoid JSON saved.")
     
     driver.quit()
 
