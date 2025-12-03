@@ -1245,7 +1245,7 @@ def scrape_stanford():
 
     base_url = "https://med.stanford.edu/adrc/news.html"
     driver.get(base_url)
-    time.sleep(2)
+    time.sleep(10)
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     article_links = soup.find_all("a", href=True)
@@ -1260,7 +1260,7 @@ def scrape_stanford():
             continue
 
         driver.get(full_link)
-        time.sleep(5)
+        time.sleep(10)
 
         soup_article = BeautifulSoup(driver.page_source, "html.parser")
         title_tag = soup_article.select_one("h1") or soup_article.find("title")
