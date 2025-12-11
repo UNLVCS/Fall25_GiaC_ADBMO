@@ -204,17 +204,37 @@ def extract_asceneuron_content(path):
     title_tag = soup.select_one("h1.df-cpt-title, h1, .entry-title")
     title = title_tag.get_text(strip=True) if title_tag else os.path.basename(path).replace(".html", "")
 
-    # Date
+    # Date 
+    date_text = None
+
+    # Common date tags
+    date_tag = soup.select_one("time, .post-date, .entry-date, .elementor-post-date")
+    if date_tag:
+        date_text = date_tag.get("datetime") or date_tag.get_text(strip=True)
+
+    # Fallback
+    if not date_text:
+        full_text = soup.get_text(" ", strip=True)
+        match = re.search(
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{1,2},?\s+\d{4}",
+            full_text,
+        )
+        if match:
+            date_text = match.group(0)
+
+    # Try parsing the date
     date = None
-    time_tag = soup.select_one("time")
-    if time_tag:
-        date = time_tag.get("datetime") or time_tag.get_text(strip=True)
-    if not date:
-        meta_date = soup.find("meta", {"property": "article:published_time"}) or soup.find("meta", {"name": "date"})
-        if meta_date and meta_date.get("content"):
-            date = meta_date["content"]
-    if date:
-        date = date.replace("Posted :", "").strip()
+    # Date cleaning
+    if date_text:
+        cleaned = re.sub(r"^[^A-Za-z]*(?:[A-Za-z\s,]+[-–—]\s*)?", "", date_text)
+        try:
+            parsed_date = dateparser.parse(cleaned, fuzzy=True)
+        except Exception:
+            parsed_date = pd.to_datetime(cleaned, errors="coerce")
+
+        if parsed_date is not None and not pd.isna(parsed_date):
+            date = parsed_date.strftime("%Y-%m-%d")
 
     # Author
     author = "AsceNeuron"
